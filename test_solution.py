@@ -8,8 +8,7 @@ import numpy as np
 from solution import (
     verify_patch_centers,
     verify_pairwise_distances,
-    pad_with_edge_and_zero_top_left,
-    compute_local_integral,
+    compute_integral_image,
     find_patch_centers,
     sort_points_clockwise,
     calculate_area,
@@ -19,31 +18,27 @@ from solution import (
     # display_grayscale_img,
 )
 
+
 def test_verify_pairwise_distances_simple():
-    points = np.array([
-        [0, 0], [3, 3], [9, 9], [12, 12]
-    ])
+    points = np.array([[0, 0], [3, 3], [9, 9], [12, 12]])
     patch_size = (3, 3)
     assert verify_pairwise_distances(points, patch_size=patch_size)
 
+
 def test_verify_pairwise_distances_simple_false_case():
-    points = np.array([
-        [0, 0], [2, 2], [9, 9], [12, 12]
-    ])
+    points = np.array([[0, 0], [2, 2], [9, 9], [12, 12]])
     patch_size = (3, 3)
     assert not verify_pairwise_distances(points, patch_size=patch_size)
 
+
 def test_verify_pairwise_distances_rectangular_patch():
-    points = np.array([
-        [3, 3], [6, 3]
-    ])
+    points = np.array([[3, 3], [6, 3]])
     patch_size = (5, 3)
     assert verify_pairwise_distances(points, patch_size=patch_size)
 
+
 def test_verify_pairwise_distances_rectangular_patch_false_case():
-    points = np.array([
-        [3, 3], [6, 2]
-    ])
+    points = np.array([[3, 3], [6, 2]])
     patch_size = (5, 3)
     assert not verify_pairwise_distances(points, patch_size=patch_size)
 
@@ -122,45 +117,33 @@ def test_draw_red_polygon(patch_size):
     # display_side_by_side(img_rgb_copy, img_rgb)
     assert np.array_equal(img_rgb_copy, img_rgb)
 
-def test_compute_local_integral_3x3_ones():
+
+@pytest.mark.parametrize(
+    "img_h,img_w,patch_size",
+    [(10, 10, (3, 3)), (29, 29, (3, 3)), (10, 10, (5, 5)), (29, 29, (5, 5))],
+)
+def test_compute_integral_image_ones(img_h, img_w, patch_size):
     """
-    1 1 1      4 6 4
-    1 1 1  ->  6 9 6
-    1 1 1      4 6 4
+    An example with img_h == img_w == 5, and patch_size == 3:
+        1 1 1 1 1      0 0 0 0 0
+        1 1 1 1 1      0 9 9 9 0
+        1 1 1 1 1  ->  0 9 9 9 0
+        1 1 1 1 1      0 9 9 9 0
+        1 1 1 1 1      0 0 0 0 0
     """
-    img = np.ones((3, 3), dtype=np.uint8)
-    result = compute_local_integral(img, patch_size=(3, 3))
+    img = np.ones((img_h, img_w), dtype=np.uint8)
+    integral_image = compute_integral_image(img, patch_size=patch_size)
 
-    assert result[1, 1] == pytest.approx(9)
+    assert np.array_equal(integral_image[:, 0], np.zeros(img_h))
+    assert np.array_equal(integral_image[:, -1], np.zeros(img_h))
+    assert np.array_equal(integral_image[0, :], np.zeros(img_w))
+    assert np.array_equal(integral_image[-1, :], np.zeros(img_w))
 
-    assert result[0, 0] == pytest.approx(4)
-    assert result[0, 2] == pytest.approx(4)
-    assert result[2, 0] == pytest.approx(4)
-    assert result[2, 2] == pytest.approx(4)
-
-    assert result[0, 1] == pytest.approx(6)
-    assert result[1, 0] == pytest.approx(6)
-    assert result[2, 1] == pytest.approx(6)
-    assert result[1, 2] == pytest.approx(6)
-
-
-def test_custom_pad():
-    arr = np.array([[1, 2, 3], [2, 4, 6], [3, 6, 9]], dtype=np.float64)
-    pad_width = (2, 2)
-    actual = pad_with_edge_and_zero_top_left(arr, pad_width=pad_width)
-    expected = np.array(
-        [
-            [0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 1, 2, 3, 3, 3],
-            [0, 0, 2, 4, 6, 6, 6],
-            [0, 0, 3, 6, 9, 9, 9],
-            [0, 0, 3, 6, 9, 9, 9],
-            [0, 0, 3, 6, 9, 9, 9],
-        ],
-        dtype=np.float64,
-    )
-    assert np.array_equal(expected, actual)
+    pi, pj = patch_size[0], patch_size[1]
+    ri, rj = pi // 2, pj // 2
+    expected = np.ones((img_h - 2 * ri, img_w - 2 * rj)) * (pi * pj)
+    actual = integral_image[ri : img_h - ri, rj : img_w - rj]
+    assert np.array_equal(actual, expected)
 
 
 def test_no_high_brightness_patches():
@@ -195,22 +178,31 @@ def test_high_brightness_border():
 def test_find_patches_at_corners_v1(patch_size):
     img_h, img_w = (4 * patch_size[0], 4 * patch_size[1])
     img = np.zeros((img_h, img_w), dtype=np.uint8)
-    corner_points = get_corner_points(img, patch_size=patch_size)
 
+    corner_points = get_corner_points(img, patch_size=patch_size)
     for i, j in corner_points:
         img[i, j] = 255
 
     patch_centers = find_patch_centers(img, patch_size=patch_size)
     sorted_patch_centers = sort_points_clockwise(patch_centers)
-    assert len(sorted_patch_centers) == 4, f"{len(sorted_patch_centers)=}"
+    assert len(sorted_patch_centers) == 4
     assert verify_patch_centers(
         patch_centers=sorted_patch_centers, img=img, patch_size=patch_size
     )
 
-    area = calculate_area(sorted_patch_centers)
-    assert area == pytest.approx(
-        (img_h - patch_size[0]) * (img_w - patch_size[1])
+    pi, pj = patch_size
+    ri, rj = pi // 2, pj // 2
+    expected = sort_points_clockwise(
+        np.array(
+            [
+                [ri, rj],
+                [img_h - 1 - ri - ri, img_w - 1 - rj - rj],
+                [img_h - 1 - ri - ri, rj],
+                [ri, img_w - 1 - rj - rj],
+            ]
+        )
     )
+    assert np.array_equal(sorted_patch_centers, expected)
 
 
 @pytest.mark.parametrize("patch_size", [(3, 3), (5, 5)])
@@ -233,24 +225,10 @@ def test_find_patches_at_corners_v2(patch_size):
     assert verify_patch_centers(
         patch_centers=sorted_patch_centers, img=img, patch_size=patch_size
     )
-    expected = np.array(
-        [
-            [0, img_w - 1 - patch_size[1] // 2],
-            [img_h - 1 - patch_size[0] // 2, img_w - 1 - patch_size[1] // 2],
-            [img_h - 1 - patch_size[0] // 2, 0],
-            [0, 0],
-        ]
-    )
-    assert np.array_equal(sorted_patch_centers, expected)
-
-    area = calculate_area(sorted_patch_centers)
-    max_area = img_h * img_w
-    assert 0 <= area <= max_area
+    corner_points = get_corner_points(img, patch_size=patch_size)
+    sorted_corner_points = sort_points_clockwise(corner_points)
+    assert np.array_equal(sorted_patch_centers, sorted_corner_points)
 
 
 if __name__ == "__main__":
-    # test_find_patches_at_corners_v1(patch_size=(3, 3))
-    # test_find_patches_at_corners_v2(patch_size=(3, 3))
-    # test_no_high_brightness_patches()
-    # test_draw_red_polygon((5, 5))
-    test_verify_pairwise_distances_simple()
+    test_find_patches_at_corners_v1((5, 5))

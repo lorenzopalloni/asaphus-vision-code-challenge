@@ -1,3 +1,4 @@
+# pylint: disable=invalid-names
 """
 Asaphus Vision Code Challenge
 
@@ -26,18 +27,8 @@ import argparse
 import cv2
 import numpy as np
 
-# import matplotlib.pyplot as plt
 from numpy.typing import NDArray
 
-
-
-# def display_grayscale_img(img: NDArray[np.uint8], figsize=(5, 5)):
-#     """Display a grayscale image using Matplotlib."""
-#     fig, ax = plt.subplots(figsize=figsize)
-#     ax.imshow(cv2.cvtColor(img, cv2.COLOR_GRAY2RGB))
-#     ax.set_xticks([])
-#     ax.set_yticks([])
-#     return fig
 
 def verify_pairwise_distances(
     points: NDArray[np.int64], patch_size: tuple[int, int]
@@ -48,10 +39,14 @@ def verify_pairwise_distances(
     region = np.ones(max_rescaled_point)
     ri, rj = patch_size[0] // 2, patch_size[1] // 2
     for i, j in rescaled_points:
-        region[max(0, i - ri): i + ri + 1, max(0, j - rj): j + rj + 1] -= 1
-        if np.sum(region[max(0, i - ri): i + ri, max(0, j - rj): j + rj]) < 0:
+        region[max(0, i - ri) : i + ri + 1, max(0, j - rj) : j + rj + 1] -= 1
+        if (
+            np.sum(region[max(0, i - ri) : i + ri, max(0, j - rj) : j + rj])
+            < 0
+        ):
             return False
     return True
+
 
 def verify_patch_centers(
     patch_centers: NDArray[np.int64],
@@ -80,10 +75,17 @@ def verify_patch_centers(
     Returns:
         bool: True if all patches are valid, False otherwise.
     """
-    local_integral = compute_local_integral(img=img, patch_size=patch_size)
+    local_integral = compute_integral_image(img=img, patch_size=patch_size)
+    img_h, img_w = img.shape[:2]
+    pi, pj = patch_size
+    ri, rj = pi // 2, pj // 2
     img_copy = img.copy()
     patch_values = np.zeros(len(patch_centers), dtype=np.float64)
     for patch_id, (i, j) in enumerate(patch_centers):
+        condition_i = ri <= i <= img_h - 1 - ri
+        condition_j = rj <= j <= img_w - 1 - rj
+        if not condition_i or not condition_j:
+            return False
         patch_values[patch_id] = local_integral[i, j]
         img_copy[
             max(0, i - (patch_size[0] - 1)) : i + patch_size[0],
@@ -172,75 +174,20 @@ def display_side_by_side(
     cv2.waitKey(1)
 
 
-def pad_with_edge_and_zero_top_left(
-    arr: NDArray[np.float64], pad_width: tuple[int, int]
-) -> NDArray[np.float64]:
-    """
-    Pad an arr with edge values and then zero out the top rows and left cols.
-
-    Example:
-        Given an input array:
-            [
-                [1, 2],
-                [3, 4]
-            ]
-        and pad_width = (1, 1), the function will first pad the array with
-        edge values:
-
-            [
-            [1, 1, 2, 2],
-            [1, 1, 2, 2],
-            [3, 3, 4, 4],
-            [3, 3, 4, 4]
-        ]
-
-    and then zero out the top row and the left column:
-
-        [
-            [0, 0, 0, 0],
-            [0, 1, 2, 2],
-            [0, 3, 4, 4],
-            [0, 3, 4, 4]
-        ]
-    """
-    padded_arr = np.pad(arr, pad_width=pad_width, mode="edge")
-    padded_arr[: pad_width[0], :] = 0.0
-    padded_arr[:, : pad_width[1]] = 0.0
-    return padded_arr
-
-
-def compute_local_integral(
+def compute_integral_image(
     img: NDArray[np.uint8],
     patch_size: tuple[int, int] = (5, 5),
 ) -> NDArray[np.float64]:
     """Compute local integral of a given 2D numpy array."""
-
     img_h, img_w = img.shape
-
-    kernel_size = (patch_size[0] + 2, patch_size[1] + 2)
-    kernel = np.zeros(kernel_size, dtype=np.float64)
-    kernel[0, 0] = 1
-    kernel[0, -2] = -1
-    kernel[-2, 0] = -1
-    kernel[-2, -2] = 1
-
-    # store radiuses
-    ri, rj = kernel_size[0] // 2, kernel_size[1] // 2
-
-    arr = img.astype(np.float64)
-    np.cumsum(arr, axis=0, out=arr)
-    np.cumsum(arr, axis=1, out=arr)
-    arr = pad_with_edge_and_zero_top_left(arr, pad_width=(ri, rj))
+    ri, rj = patch_size[0] // 2, patch_size[1] // 2
 
     local_integral = np.zeros((img_h, img_w), dtype=np.float64)
-
-    for i in range(img_h):
-        for j in range(img_w):
-            # store local_region's center
-            ci, cj = i + ri, j + rj
-            local_region = arr[ci - ri: ci + ri + 1, cj - rj: cj + rj + 1]
-            local_integral[i, j] = np.multiply(local_region, kernel).sum()
-
+    for i in range(ri, img_h - ri):
+        for j in range(rj, img_w - rj):
+            local_integral[i, j] = img[
+                i - ri : i + ri + 1, j - rj : j + rj + 1
+            ].sum()
     return local_integral
 
 
@@ -250,7 +197,7 @@ def find_patch_centers(
     num_patches: int = 4,
 ) -> NDArray[np.int64]:
     """Find the non-overlapping patches with highest average brightness."""
-    local_integral = compute_local_integral(img=img, patch_size=patch_size)
+    local_integral = compute_integral_image(img=img, patch_size=patch_size)
 
     indices = []
     arr_copy = local_integral.copy()

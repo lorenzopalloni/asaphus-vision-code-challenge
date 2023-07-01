@@ -1,13 +1,10 @@
 ## TODOs List
 
-> resume from:
-
-## high priority
-- replace matplotlib with cv2
-
-## medium priority
-
-## low priority
+- remove matplotlib
+- consider invalid patches that overflow
+- adjust test cases
+- adjust convolution
+- spike about performance optimization
 
 ## DONEs
 
