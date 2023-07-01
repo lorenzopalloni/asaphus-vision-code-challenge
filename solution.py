@@ -1,4 +1,3 @@
-# pylint: disable=invalid-names
 """
 Asaphus Vision Code Challenge
 
