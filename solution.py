@@ -33,6 +33,7 @@ from numpy.typing import NDArray
 def verify_pairwise_distances(
     points: NDArray[np.int64], patch_size: tuple[int, int]
 ) -> bool:
+    """Verify that paches centered at the given points don't overlap."""
     min_point = points.min(axis=0)
     rescaled_points = points - min_point
     max_rescaled_point = rescaled_points.max(axis=0)
