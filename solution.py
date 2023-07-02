@@ -1,15 +1,14 @@
 """
 Asaphus Vision Code Challenge
 
-This is a solution of the challenge written by Lorenzo Palloni.
-email: palloni.lorenzo@gmail.com
+Author: Lorenzo Palloni (palloni.lorenzo@gmail.com)
 
-Description of the challenge:
-Write a Python script that reads an image from a file as grayscale, and finds
-the four non-overlapping 5x5 patches with highest average brightness. Take the
-patch centers as corners of a quadrilateral, calculate its area in pixels, and
-draw the quadrilateral in red into the image and save it in PNG format. Use
-the opencv-python package for image handling. Write test cases.
+This script reads an image from a file in grayscale and finds the four 
+non-overlapping 5x5 patches with the highest average brightness. It then 
+draws a quadrilateral using the centers of these patches as corners and saves 
+the modified image in PNG format.
+
+Required packages: opencv-python, numpy
 
 Usage:
 ```sh
@@ -17,7 +16,21 @@ solution.py [-h] \
     --input_image_path INPUT_IMAGE_PATH \
     [--output_image_path OUTPUT_IMAGE_PATH]
 ```
+
+Arguments:
+--input_image_path: The file path of the input image.
+--output_image_path (optional): The file path for the output image.
+
+If not provided, the script will save the output image in the
+current directory with the name 'output.png'.
+
+Output:
+The output is a PNG image with a quadrilateral drawn on it, whose corners
+are the centers of the four 5x5 patches with the highest average
+brightness. The area of the quadrilateral in pixels is printed to the
+console.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -30,20 +43,58 @@ from numpy.typing import NDArray
 
 
 def verify_pairwise_distances(
-    points: NDArray[np.int64], patch_size: tuple[int, int]
+    points: NDArray[np.int64],
+    patch_size: tuple[int, int],
+    coordinates_type: str = "ij",
 ) -> bool:
-    """Verify that paches centered at the given points don't overlap."""
+    """
+    Verify that patches centered at the given points don't overlap.
+
+    This function takes a list of points and a patch size, and checks that
+    no two patches centered at these points would overlap if placed on an
+    image. It operates in two dimensions and respects the order of the input
+    points based on the specified axis_order.
+
+    Args:
+        points (NDArray[np.int64]): An array of points in the form of (x, y)
+            or (y, x) coordinates.
+        patch_size (tuple[int, int]): The size of each patch, specified as
+            (height, width).
+        axis_order (str, optional): Indicates the order of the coordinates in
+            'points'. If 'yx', the points are assumed to be in (y, x) order.
+            If 'xy', the points are in (x, y) order. Defaults to 'yx'.
+
+    Returns:
+        bool: True if all patches centered at the points would not overlap,
+            False otherwise.
+
+    Raises:
+        ValueError: If 'axis_order' is not 'yx' or 'xy'.
+
+    Note:
+        The points are translated so the minimum point is at (0, 0) in the
+        space.
+    """
+
+    if coordinates_type not in {"xy", "ij"}:
+        raise ValueError("coordinates_type should be either 'xy' or 'ij'.")
+
+    if coordinates_type == "xy":
+        points = points[:, ::-1]
+        patch_size = patch_size[::-1]
+
     min_point = points.min(axis=0)
     rescaled_points = points - min_point
-    max_rescaled_point = rescaled_points.max(axis=0)
-    region = np.ones(max_rescaled_point)
-    ri, rj = patch_size[0] // 2, patch_size[1] // 2
+    max_rescaled_point = rescaled_points.max(axis=0) + 1
+    fake_region = np.ones(max_rescaled_point, dtype=np.int64)
+    radius_h, radius_w = patch_size[0] // 2, patch_size[1] // 2
     for i, j in rescaled_points:
-        region[max(0, i - ri) : i + ri + 1, max(0, j - rj) : j + rj + 1] -= 1
-        if (
-            np.sum(region[max(0, i - ri) : i + ri, max(0, j - rj) : j + rj])
-            < 0
-        ):
+        local_fake_region = fake_region[
+            max(0, i - radius_h) : i + radius_h + 1,
+            max(0, j - radius_w) : j + radius_w + 1,
+        ]
+        local_fake_region -= 1
+        if local_fake_region.sum() < 0:
             return False
     return True
 
@@ -54,16 +105,18 @@ def verify_patch_centers(
     patch_size: tuple[int, int] = (5, 5),
 ) -> bool:
     """
-    Determine if patches extracted from an image are valid.
+    Determine if patch centers extracted from an image are valid.
 
-    This function first calculates a local integral image with the provided
-    patch size. Then, for each patch, the function sets all the pixel values
-    within the patch in the image to zero and records the value from the local
-    integral image. The minimum value among all patches' integral values is
-    then compared to the maximum pixel value in the image (after zeroing all
-    patches). If the minimum patch value is greater than or equal to the
-    maximum pixel value, the function returns True indicating all patches are
-    valid; otherwise, it returns False.
+    1. Verifies that the given patches do not overlap.
+    2. Calculates the integral image of `img`, given a `patch_size`.
+    3. For each patch center, the function sets all the pixel values within
+       the patch in the image to zero and records the value from the integral
+       image.
+    4. The minimum value among all patches' integral values is then compared
+       to the maximum pixel value in the image (after zeroing all patches).
+    5. If the minimum patch value is greater than or equal to the maximum
+       pixel value, the function returns True indicating all patches are
+       valid; otherwise, it returns False.
 
     Args:
         patch_centers (NDArray[np.int64]): Numpy array containing the patch
@@ -75,21 +128,29 @@ def verify_patch_centers(
     Returns:
         bool: True if all patches are valid, False otherwise.
     """
-    local_integral = compute_integral_image(img=img, patch_size=patch_size)
+    if not verify_pairwise_distances(
+        points=patch_centers,
+        patch_size=patch_size,
+        coordinates_type="ij"
+    ):
+        return False
+    integral_image = compute_integral_image(img=img, patch_size=patch_size)
     img_h, img_w = img.shape[:2]
-    pi, pj = patch_size
-    ri, rj = pi // 2, pj // 2
+    patch_h, patch_w = patch_size
+    radius_h, radius_w = patch_h // 2, patch_w // 2
     img_copy = img.copy()
     patch_values = np.zeros(len(patch_centers), dtype=np.float64)
     for patch_id, (i, j) in enumerate(patch_centers):
-        condition_i = ri <= i <= img_h - 1 - ri
-        condition_j = rj <= j <= img_w - 1 - rj
-        if not condition_i or not condition_j:
+
+        if not radius_h <= i <= img_h - 1 - radius_h:
             return False
-        patch_values[patch_id] = local_integral[i, j]
+        if not radius_w <= j <= img_w - 1 - radius_w:
+            return False
+
+        patch_values[patch_id] = integral_image[i, j]
         img_copy[
-            max(0, i - (patch_size[0] - 1)) : i + patch_size[0],
-            max(0, j - (patch_size[1] + 1)) : j + patch_size[1],
+            max(0, i - (patch_h - 1)) : i + (patch_h - 1) + 1,
+            max(0, j - (patch_w - 1)) : j + (patch_w - 1) + 1,
         ] = 0.0
     return patch_values.min() >= img_copy.max()
 
@@ -97,52 +158,152 @@ def verify_patch_centers(
 def get_corner_points(
     img: NDArray[np.uint8], patch_size: tuple[int, int] = (5, 5)
 ) -> NDArray[np.int64]:
-    """Return corner points up to the radiuses of the `patch_size`."""
+    """
+    Return corner points within a specified radius of the patch size.
+
+    The function determines the corner points inside an image that are located
+    within a certain radius defined by the `patch_size`. This allows to operate
+    on the region of interest inside an image while avoiding boundaries.
+
+    Args:
+        img (NDArray[np.uint8]): The image from which to extract corner points.
+        patch_size (tuple[int, int], optional): Size of the patches, defined
+            as (height, width). Defaults to (5, 5).
+
+    Returns:
+        NDArray[np.int64]: Array of corner points within the patch radius.
+    """
     img_h, img_w = img.shape[:2]
-    radiuses = (patch_size[0] // 2, patch_size[1] // 2)
-    return np.array(
+    radius_h, radius_w = patch_size[0] // 2, patch_size[1] // 2
+
+    corners = np.array(
         [
-            [radiuses[0], radiuses[1]],
-            [radiuses[0], (img_w - 1) - radiuses[1]],
-            [(img_h - 1) - radiuses[0], (img_w - 1) - radiuses[1]],
-            [(img_h - 1) - radiuses[0], radiuses[1]],
+            [radius_h, radius_w],
+            [radius_h, img_w - 1 - radius_w],
+            [img_h - 1 - radius_h, img_w - 1 - radius_w],
+            [img_h - 1 - radius_h, radius_w],
         ]
     )
 
+    return corners
+
 
 def draw_red_polygon(
-    img: NDArray[np.uint8], vertices: NDArray[np.int64]
+    img: NDArray[np.uint8],
+    vertices: NDArray[np.int64],
+    coordinates_type: str = "ij",
 ) -> NDArray[np.uint8]:
-    """Draw a polygon on image joining vertices."""
+    """
+    Draw a red polygon on an image given a set of vertices.
+
+    This function first checks the color space of the image. If it is in
+    grayscale, it converts it to BGR. Then, depending on the 'coordinates_type'
+    parameter, it might swap the x and y coordinates of the vertices. It then
+    uses OpenCV's 'polylines' function to draw a polygon on the image using
+    the vertices.
+
+    Args:
+        img (NDArray[np.uint8]): Input image on which to draw the polygon.
+            Can be grayscale or BGR.
+        vertices (NDArray[np.int64]): Numpy array containing the vertices of
+            the polygon.
+        coordinates_type (str, optional): Specifies the order of coordinates
+            in the 'vertices' array. Should be either 'xy' or 'ij'.
+            Defaults to 'ij'.
+
+    Returns:
+        NDArray[np.uint8]: Image with the drawn polygon.
+
+    Raises:
+        ValueError: If 'coordinates_type' is not 'xy' or 'ij'.
+    """
     if len(img.shape) == 2:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+    if coordinates_type not in {"xy", "ij"}:
+        raise ValueError("coordinates_type should be either 'xy' or 'ij'.")
+
+    if coordinates_type == "ij":
+        vertices = vertices[:, ::-1]  # swap x and y coordinates
+
     cv2.polylines(
         img,
-        [np.flip(vertices, 1)],
+        [vertices],
         isClosed=True,
         color=(0, 0, 255),
         thickness=1,
     )
+
     return img
 
 
-def sort_points_clockwise(points: NDArray[np.int64]) -> NDArray[np.int64]:
-    """Sort points in clockwise order."""
+def sort_points_clockwise(
+    points: NDArray[np.int64], coordinates_type: str = "xy"
+) -> NDArray[np.int64]:
+    """
+    Sort points in a clockwise order around their centroid.
+
+    This function calculates the centroid of the given points and computes the
+    angles each point forms with the centroid. It then sorts the points based
+    on these angles in clockwise order.
+
+    Note that the coordinates type will impact the orientation of the output.
+
+    Args:
+        points (NDArray[np.int64]): Numpy array containing the points to be
+            sorted.
+        coordinates_type (str, optional): Specifies the type of coordinates
+            in the 'points' array. Should be either 'xy' (standard cartesian
+            2D plan) or 'ij' (ith row and jth column of a 2D array).
+            Defaults to 'xy'.
+
+    Returns:
+        NDArray[np.int64]: Numpy array of the sorted points.
+
+    Raises:
+        ValueError: If 'coordinates_type' is not 'xy' or 'ij'.
+    """
+    if coordinates_type not in {"xy", "ij"}:
+        raise ValueError("coordinates_type should be either 'xy' or 'ij'.")
+
+    if coordinates_type == "ij":
+        points = points[:, ::-1]
+        points[:, 1] *= -1
+
     center = np.mean(points, axis=0)
     deltas = points - center
     angles = np.arctan2(deltas[:, 1], deltas[:, 0])
     sorted_indices = np.argsort(angles)[::-1]
+
+    if coordinates_type == "ij":
+        points[:, 1] *= -1
+        points = points[:, ::-1]
+
     return points[sorted_indices]
 
 
 def calculate_area(sorted_vertices: NDArray[np.int64]) -> float:
-    """Calculate the area of a polygon given its vertices.
+    """
+    Calculate the area of a polygon given its vertices.
+
+    The points should be ordered in clockwise or counterclockwise direction.
+
+    Args:
+        sorted_vertices (NDArray[np.int64]): Numpy array containing the
+            vertices of the polygon in sorted order.
+
+    Returns:
+        float: Area of the polygon.
+
+    Raises:
+        ValueError: If the points are not 2D.
+        ValueError: If there are less than 3 points.
 
     References:
-    https://en.wikipedia.org/wiki/Shoelace_formula
-    https://alexkritchevsky.com/2018/08/06/oriented-area.html
-    https://rosettacode.org/wiki/Shoelace_formula_for_polygonal_area#Python
-    https://scikit-spatial.readthedocs.io/en/stable/_modules/skspatial/measurement.html#area_signed
+        https://en.wikipedia.org/wiki/Shoelace_formula
+        https://alexkritchevsky.com/2018/08/06/oriented-area.html
+        https://rosettacode.org/wiki/Shoelace_formula_for_polygonal_area#Python
+        https://scikit-spatial.readthedocs.io/en/stable/_modules/skspatial/measurement.html#area_signed
     """
     if sorted_vertices.ndim != 2:
         raise ValueError("The points must be 2D.")
@@ -160,14 +321,26 @@ def display_side_by_side(
     image1: NDArray[np.uint8],
     image2: NDArray[np.uint8],
     title: str = "Combined Image",
-):
-    """Display two images side-by-side using opencv-python."""
+) -> None:
+    """
+    Display two images side-by-side using OpenCV.
+
+    The function combines two images horizontally and displays the resultant
+    image in a new window. If the images are grayscale, they are converted to
+    RGB before combining.
+
+    Args:
+        image1 (NDArray[np.uint8]): First image to display.
+        image2 (NDArray[np.uint8]): Second image to display.
+        title (str, optional): Title for the display window. Defaults to
+            "Combined Image".
+    """
     if len(image1.shape) == 2:
         image1 = cv2.cvtColor(image1, cv2.COLOR_GRAY2BGR)
     if len(image2.shape) == 2:
-        image1 = cv2.cvtColor(image2, cv2.COLOR_GRAY2BGR)
-    combined = np.hstack((image1, image2))
+        image2 = cv2.cvtColor(image2, cv2.COLOR_GRAY2BGR)
 
+    combined = np.hstack((image1, image2))
     cv2.imshow(title, combined)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
@@ -178,17 +351,74 @@ def compute_integral_image(
     img: NDArray[np.uint8],
     patch_size: tuple[int, int] = (5, 5),
 ) -> NDArray[np.float64]:
-    """Compute local integral of a given 2D numpy array."""
-    img_h, img_w = img.shape
-    ri, rj = patch_size[0] // 2, patch_size[1] // 2
+    """
+    Compute the local integral image over a patch for each pixel.
 
-    local_integral = np.zeros((img_h, img_w), dtype=np.float64)
-    for i in range(ri, img_h - ri):
-        for j in range(rj, img_w - rj):
-            local_integral[i, j] = img[
-                i - ri : i + ri + 1, j - rj : j + rj + 1
+    This function first calculates the global integral image of the input
+    image, then computes the local integral image (i.e., the sum of pixel
+    values within a patch) at each pixel.
+
+    Args:
+        img (NDArray[np.uint8]): Input 2D array.
+        patch_size (tuple[int, int], optional): Size of the patches.
+            Defaults to (5, 5).
+
+    Returns:
+        NDArray[np.float64]: 2D array with the local sum at each pixel.
+    """
+    global_integral_image = img.astype(np.float64)
+    global_integral_image = np.pad(
+        global_integral_image, ((1, 0), (1, 0)), mode="constant"
+    )
+    np.cumsum(global_integral_image, axis=0, out=global_integral_image)
+    np.cumsum(global_integral_image, axis=1, out=global_integral_image)
+
+    radius_h, radius_w = patch_size[0] // 2, patch_size[1] // 2
+    img_h, img_w = img.shape
+
+    local_integral_image = np.zeros_like(img, dtype=np.float64)
+    for i in range(radius_h, img_h - radius_h):
+        for j in range(radius_w, img_w - radius_w):
+            local_integral_image[i, j] = (
+                global_integral_image[i + radius_h + 1, j + radius_w + 1]
+                - global_integral_image[i - radius_h, j + radius_w + 1]
+                - global_integral_image[i + radius_h + 1, j - radius_w]
+                + global_integral_image[i - radius_h, j - radius_w]
+            )
+
+    return local_integral_image
+
+
+def compute_integral_image_v2(
+    img: NDArray[np.uint8],
+    patch_size: tuple[int, int] = (5, 5),
+) -> NDArray[np.float64]:
+    """
+    Compute the local integral image over a patch for each pixel.
+
+    This function calculates the local integral image directly from the input
+    image (i.e., the sum of pixel values within a patch) at each pixel.
+
+    Args:
+        img (NDArray[np.uint8]): Input 2D array.
+        patch_size (tuple[int, int], optional): Size of the patches.
+            Defaults to (5, 5).
+
+    Returns:
+        NDArray[np.float64]: 2D array with the local sum at each pixel.
+    """
+    img_h, img_w = img.shape
+    radius_h, radius_w = patch_size[0] // 2, patch_size[1] // 2
+
+    local_integral_image = np.zeros((img_h, img_w), dtype=np.float64)
+    for i in range(radius_h, img_h - radius_h):
+        for j in range(radius_w, img_w - radius_w):
+            local_integral_image[i, j] = img[
+                i - radius_h : i + radius_h + 1,
+                j - radius_w : j + radius_w + 1,
             ].sum()
-    return local_integral
+
+    return local_integral_image
 
 
 def find_patch_centers(
@@ -196,20 +426,38 @@ def find_patch_centers(
     patch_size: tuple[int, int] = (5, 5),
     num_patches: int = 4,
 ) -> NDArray[np.int64]:
-    """Find the non-overlapping patches with highest average brightness."""
-    local_integral = compute_integral_image(img=img, patch_size=patch_size)
+    """
+    Find non-overlapping patches with highest average brightness in the image.
 
+    This function first computes the local integral image for each pixel, then
+    selects the 'num_patches' number of patches with highest integral values
+    (which translates to the highest average brightness over the patch).
+
+    Args:
+        img (NDArray[np.uint8]): Input 2D array.
+        patch_size (tuple[int, int], optional): Size of the patches.
+            Defaults to (5, 5).
+        num_patches (int, optional): Number of patches to find. Defaults to 4.
+
+    Returns:
+        NDArray[np.int64]: Indices of the patch centers.
+    """
+    local_integral = compute_integral_image(img=img, patch_size=patch_size)
+    patch_h, patch_w = patch_size
+
+    integral_copy = local_integral.copy()
     indices = []
-    arr_copy = local_integral.copy()
 
     for _ in range(num_patches):
-        max_val_index = np.unravel_index(np.argmax(arr_copy), arr_copy.shape)
+        max_val_index = np.unravel_index(
+            np.argmax(integral_copy), integral_copy.shape
+        )
         indices.append(max_val_index)
 
         i, j = max_val_index[0], max_val_index[1]
-        arr_copy[
-            max(0, i - (patch_size[0] - 1)) : i + patch_size[0],
-            max(0, j - (patch_size[1] + 1)) : j + patch_size[1],
+        integral_copy[
+            max(0, i - (patch_h - 1)) : i + (patch_h - 1) + 1,
+            max(0, j - (patch_w - 1)) : j + (patch_w - 1) + 1,
         ] = -np.inf
 
     return np.array(indices)
@@ -236,11 +484,29 @@ def parse_arguments():
     return args
 
 
-def save_image(img: NDArray[np.uint8], output_image_path: Path):
-    """Save the image to a file, ensuring the file is a PNG."""
+def save_image(img: NDArray[np.uint8], output_image_path: Path) -> None:
+    """
+    Save the image to a file with PNG format.
+
+    This function verifies the output image extension to ensure it is a PNG
+    file, and then writes the image data into the file.
+
+    Args:
+        img (NDArray[np.uint8]): The image to be saved, in the form of a numpy
+            array.
+        output_image_path (Path): The output path for the image file. The file
+            extension must be '.png'.
+
+    Raises:
+        ValueError: If the file extension of 'output_image_path' is not '.png'.
+
+    Returns:
+        None
+    """
     if output_image_path.suffix.lower() != ".png":
-        raise ValueError("Extension of the output_image_path must be 'PNG'.")
-    cv2.imwrite(filename=output_image_path.as_posix(), img=img)
+        raise ValueError("Output file must be a '.png' file.")
+
+    cv2.imwrite(str(output_image_path), img)
 
 
 def main():
@@ -264,7 +530,11 @@ def main():
         input_image_path.as_posix(), cv2.IMREAD_GRAYSCALE
     )
     patch_centers = find_patch_centers(img=img_grayscale)
-    verify_pairwise_distances(patch_centers, (5, 5))
+    patch_size = (5, 5)
+    verify_pairwise_distances(patch_centers, patch_size=patch_size)
+    verify_patch_centers(
+        patch_centers=patch_centers, img=img_grayscale, patch_size=patch_size
+    )
     sorted_patch_centers = sort_points_clockwise(patch_centers)
     area = calculate_area(sorted_patch_centers)
     print("Area of the quadrilateral:", area)
