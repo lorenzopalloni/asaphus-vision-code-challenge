@@ -4,9 +4,9 @@ Asaphus Vision Code Challenge
 Author: Lorenzo Palloni (palloni.lorenzo@gmail.com)
 
 This script reads an image from a file in grayscale and finds the four 
-non-overlapping 5x5 patches with the highest average brightness. It then 
-draws a quadrilateral using the centers of these patches as corners and saves 
-the modified image in PNG format.
+non-overlapping patches with the highest average brightness, with
+user-specified patch size. It then draws a quadrilateral using the centers
+of these patches as corners and saves the modified image in PNG format.
 
 Required packages: opencv-python, numpy
 
@@ -14,21 +14,22 @@ Usage:
 ```sh
 solution.py [-h] \
     --input_image_path INPUT_IMAGE_PATH \
-    [--output_image_path OUTPUT_IMAGE_PATH]
-```
+    [--output_image_path OUTPUT_IMAGE_PATH] \
+    [--patch_size PATCH_SIZE]
 
 Arguments:
 --input_image_path: The file path of the input image.
 --output_image_path (optional): The file path for the output image.
+--patch_size (optional): The size of the patches to find bright spots,
+    specified as 'height,width'. Default is '5,5'.
 
 If not provided, the script will save the output image in the
 current directory with the name 'output.png'.
 
 Output:
 The output is a PNG image with a quadrilateral drawn on it, whose corners
-are the centers of the four 5x5 patches with the highest average
-brightness. The area of the quadrilateral in pixels is printed to the
-console.
+are the centers of the patches with the highest average brightness. The area
+of the quadrilateral in pixels is printed to the console.
 """
 
 from __future__ import annotations
@@ -473,7 +474,17 @@ def parse_arguments():
         default="output.png",
         help="The path to the output image file.",
     )
+    parser.add_argument(
+        "--patch_size",
+        "-p",
+        type=str,
+        default="5,5",
+        help="The size of the patch used to find bright spots. Format: 'h,w'"
+    )
     args = parser.parse_args()
+
+    args.patch_size = tuple(map(int, args.patch_size.split(',')))
+
     return args
 
 
@@ -518,13 +529,12 @@ def main():
     args = parse_arguments()
     input_image_path = args.input_image_path
     output_image_path = args.output_image_path
+    patch_size = args.patch_size
 
     img_grayscale = cv2.imread(
         input_image_path.as_posix(), cv2.IMREAD_GRAYSCALE
     )
-    patch_centers = find_patch_centers(img=img_grayscale)
-    patch_size = (5, 5)
-    verify_pairwise_distances(patch_centers, patch_size=patch_size)
+    patch_centers = find_patch_centers(img=img_grayscale, patch_size=patch_size)
     verify_patch_centers(
         patch_centers=patch_centers, img=img_grayscale, patch_size=patch_size
     )
