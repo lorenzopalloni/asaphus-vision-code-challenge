@@ -15,8 +15,6 @@ from solution import (
     calculate_area,
     draw_red_polygon,
     get_corner_points,
-    # display_side_by_side,
-    # display_grayscale_img,
 )
 
 
@@ -350,7 +348,6 @@ def test_draw_red_polygon(patch_size):
         corner_points[1][0] : corner_points[2][0] + 1, corner_points[1][1]
     ] = red_color
 
-    # display_side_by_side(img_rgb_copy, img_rgb)
     assert np.array_equal(img_rgb_copy, img_rgb)
 
 
@@ -383,10 +380,14 @@ def test_compute_integral_image_ones(img_h, img_w, patch_size):
     assert np.array_equal(integral_image[0, :], np.zeros(img_w))
     assert np.array_equal(integral_image[-1, :], np.zeros(img_w))
 
-    pi, pj = patch_size[0], patch_size[1]
-    ri, rj = pi // 2, pj // 2
-    expected = np.ones((img_h - 2 * ri, img_w - 2 * rj)) * (pi * pj)
-    actual = integral_image[ri : img_h - ri, rj : img_w - rj]
+    patch_h, patch_w = patch_size
+    radius_h, radius_w = patch_h // 2, patch_w // 2
+    expected = np.ones((img_h - 2 * radius_h, img_w - 2 * radius_w)) * (
+        patch_h * patch_w
+    )
+    actual = integral_image[
+        radius_h : img_h - radius_h, radius_w : img_w - radius_w
+    ]
     assert np.array_equal(actual, expected)
 
 
@@ -400,7 +401,7 @@ def test_compute_integral_image_ones(img_h, img_w, patch_size):
         (127, 131, (5, 5)),
     ],
 )
-def test_no_high_brightness_patches(img_h, img_w, patch_size):
+def test_find_patch_centers_one_bright_region(img_h, img_w, patch_size):
     img = np.ones((img_h, img_w), dtype=np.uint8)
     radius_h, radius_w = patch_size[0] // 2, patch_size[1] // 2
     img[
@@ -421,7 +422,7 @@ def test_no_high_brightness_patches(img_h, img_w, patch_size):
         (127, 131, (5, 5)),
     ],
 )
-def test_adjacent_high_brightness_patches(img_h, img_w, patch_size):
+def test_find_patch_centers_adjacent_bright_regions(img_h, img_w, patch_size):
     img = np.zeros((img_h, img_w), dtype=np.uint8)
     patch_h, patch_w = patch_size
     radius_h, radius_w = patch_h // 2, patch_w // 2
@@ -439,7 +440,7 @@ def test_adjacent_high_brightness_patches(img_h, img_w, patch_size):
 
 
 @pytest.mark.parametrize("patch_size", [(3, 3), (5, 5)])
-def test_find_patches_at_corners_v1(patch_size):
+def test_find_patch_centers_bright_corners_v1(patch_size):
     img_h, img_w = (4 * patch_size[0], 4 * patch_size[1])
     img = np.zeros((img_h, img_w), dtype=np.uint8)
 
@@ -470,7 +471,7 @@ def test_find_patches_at_corners_v1(patch_size):
 
 
 @pytest.mark.parametrize("patch_size", [(3, 3), (5, 5)])
-def test_find_patches_at_corners_v2(patch_size):
+def test_find_patch_centers_bright_corners_v2(patch_size):
     img_h, img_w = (4 * patch_size[0], 4 * patch_size[1])
     img = np.zeros((img_h, img_w), dtype=np.uint8)
     selected_points = [

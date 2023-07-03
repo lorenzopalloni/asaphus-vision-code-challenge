@@ -48,32 +48,28 @@ def verify_pairwise_distances(
     coordinates_type: str = "ij",
 ) -> bool:
     """
-    Verify that patches centered at the given points don't overlap.
+    Verify if patches centered at the given points don't overlap.
 
-    This function takes a list of points and a patch size, and checks that
-    no two patches centered at these points would overlap if placed on an
-    image. It operates in two dimensions and respects the order of the input
-    points based on the specified axis_order.
+    Function checks if patches of a specified size, when centered at provided
+    points on a hypothetical image, would overlap. It respects the order of
+    input points based on the specified 'coordinates_type'.
 
     Args:
         points (NDArray[np.int64]): An array of points in the form of (x, y)
-            or (y, x) coordinates.
-        patch_size (tuple[int, int]): The size of each patch, specified as
-            (height, width).
-        axis_order (str, optional): Indicates the order of the coordinates in
-            'points'. If 'yx', the points are assumed to be in (y, x) order.
-            If 'xy', the points are in (x, y) order. Defaults to 'yx'.
+            or (i, j) coordinates.
+        patch_size (tuple[int, int]): The size of each patch, as (height,
+            width).
+        coordinates_type (str, optional): Specifies the type of coordinates
+            in the 'points' array. It should be either 'xy' (standard
+            cartesian 2D plan) or 'ij' (ith row and jth column of a 2D array).
+            Defaults to 'ij'.
 
     Returns:
-        bool: True if all patches centered at the points would not overlap,
+        bool: True if all patches centered at the points wouldn't overlap,
             False otherwise.
 
     Raises:
-        ValueError: If 'axis_order' is not 'yx' or 'xy'.
-
-    Note:
-        The points are translated so the minimum point is at (0, 0) in the
-        space.
+        ValueError: If 'coordinates_type' is not 'xy' or 'ij'.
     """
 
     if coordinates_type not in {"xy", "ij"}:
@@ -129,9 +125,7 @@ def verify_patch_centers(
         bool: True if all patches are valid, False otherwise.
     """
     if not verify_pairwise_distances(
-        points=patch_centers,
-        patch_size=patch_size,
-        coordinates_type="ij"
+        points=patch_centers, patch_size=patch_size, coordinates_type="ij"
     ):
         return False
     integral_image = compute_integral_image(img=img, patch_size=patch_size)
@@ -162,8 +156,7 @@ def get_corner_points(
     Return corner points within a specified radius of the patch size.
 
     The function determines the corner points inside an image that are located
-    within a certain radius defined by the `patch_size`. This allows to operate
-    on the region of interest inside an image while avoiding boundaries.
+    within a certain radius defined by the `patch_size`.
 
     Args:
         img (NDArray[np.uint8]): The image from which to extract corner points.
@@ -238,7 +231,7 @@ def draw_red_polygon(
 
 
 def sort_points_clockwise(
-    points: NDArray[np.int64], coordinates_type: str = "xy"
+    points: NDArray[np.int64], coordinates_type: str = "ij"
 ) -> NDArray[np.int64]:
     """
     Sort points in a clockwise order around their centroid.
@@ -255,7 +248,7 @@ def sort_points_clockwise(
         coordinates_type (str, optional): Specifies the type of coordinates
             in the 'points' array. Should be either 'xy' (standard cartesian
             2D plan) or 'ij' (ith row and jth column of a 2D array).
-            Defaults to 'xy'.
+            Defaults to 'ij'.
 
     Returns:
         NDArray[np.int64]: Numpy array of the sorted points.
