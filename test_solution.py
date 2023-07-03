@@ -1,4 +1,7 @@
-# pylint: disable=missing-function-docstring
+"""
+This module use pytest to ensure the main functionalities of the `solution.py`
+script work as expected.
+"""
 from __future__ import annotations
 
 import cv2
@@ -402,6 +405,12 @@ def test_compute_integral_image_ones(img_h, img_w, patch_size):
     ],
 )
 def test_find_patch_centers_one_bright_region(img_h, img_w, patch_size):
+    """
+    Test the `find_patch_centers` function by creating an image with a single
+    bright region at the center. The function should return this center as one
+    of the patch centers. The test is parametrized with different image sizes
+    and patch sizes.
+    """
     img = np.ones((img_h, img_w), dtype=np.uint8)
     radius_h, radius_w = patch_size[0] // 2, patch_size[1] // 2
     img[
@@ -423,6 +432,12 @@ def test_find_patch_centers_one_bright_region(img_h, img_w, patch_size):
     ],
 )
 def test_find_patch_centers_adjacent_bright_regions(img_h, img_w, patch_size):
+    """
+    Test the `find_patch_centers` function with an image having two adjacent
+    bright regions. The function should correctly identify the centers of these
+    regions as patch centers. The test is parametrized with different image
+    sizes and patch sizes.
+    """
     img = np.zeros((img_h, img_w), dtype=np.uint8)
     patch_h, patch_w = patch_size
     radius_h, radius_w = patch_h // 2, patch_w // 2
@@ -441,6 +456,11 @@ def test_find_patch_centers_adjacent_bright_regions(img_h, img_w, patch_size):
 
 @pytest.mark.parametrize("patch_size", [(3, 3), (5, 5)])
 def test_find_patch_centers_bright_corners_v1(patch_size):
+    """
+    Test the `find_patch_centers` function with an image where the corners are
+    bright. The function should return these corners as the centers of the patches.
+    The test is parametrized with different patch sizes.
+    """
     img_h, img_w = (4 * patch_size[0], 4 * patch_size[1])
     img = np.zeros((img_h, img_w), dtype=np.uint8)
 
@@ -470,15 +490,29 @@ def test_find_patch_centers_bright_corners_v1(patch_size):
     assert np.array_equal(sorted_patch_centers, expected)
 
 
-@pytest.mark.parametrize("patch_size", [(3, 3), (5, 5)])
-def test_find_patch_centers_bright_corners_v2(patch_size):
-    img_h, img_w = (4 * patch_size[0], 4 * patch_size[1])
+@pytest.mark.parametrize(
+    "img_h,img_w,patch_size",
+    [
+        (10, 10, (3, 3)),
+        (29, 29, (3, 3)),
+        (10, 10, (5, 5)),
+        (29, 29, (5, 5)),
+        (127, 131, (5, 5)),
+        (1000, 1000, (5, 5)),
+    ],
+)
+def test_find_patch_centers_bright_corners_v2(img_h, img_w, patch_size):
+    """
+    Test the `find_patch_centers` function by creating an image where only the
+    corners are bright. The function should correctly identify the patch centers.
+    The test is parametrized with different image sizes and patch sizes.
+    """
     img = np.zeros((img_h, img_w), dtype=np.uint8)
     selected_points = [
         [0, 0],
         [0, img_w - 1],
         [img_h - 1, 0],
-        [img_w - 1, img_h - 1],
+        [img_h - 1, img_w - 1],
     ]
 
     for i, j in selected_points:

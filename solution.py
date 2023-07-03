@@ -11,17 +11,18 @@ of these patches as corners and saves the modified image in PNG format.
 Required packages: opencv-python, numpy
 
 Usage:
-```sh
 solution.py [-h] \
     --input_image_path INPUT_IMAGE_PATH \
     [--output_image_path OUTPUT_IMAGE_PATH] \
-    [--patch_size PATCH_SIZE]
+    [--patch_size PATCH_SIZE] \
+    [--disable_display]
 
 Arguments:
 --input_image_path: The file path of the input image.
 --output_image_path (optional): The file path for the output image.
 --patch_size (optional): The size of the patches to find bright spots,
     specified as 'height,width'. Default is '5,5'.
+--disable_display (optional): Disable display of output image.
 
 If not provided, the script will save the output image in the
 current directory with the name 'output.png'.
@@ -32,6 +33,7 @@ are the centers of the patches with the highest average brightness. The area
 of the quadrilateral in pixels is printed to the console.
 """
 
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -41,6 +43,12 @@ import cv2
 import numpy as np
 
 from numpy.typing import NDArray
+
+try:
+    from cython_my_utils import compute_local_integral_image
+except ImportError:
+    print("Could not import optimized version. Using default Python function.")
+    from my_utils import compute_local_integral_image
 
 
 def verify_pairwise_distances(
@@ -353,12 +361,12 @@ def compute_integral_image(
     values within a patch) at each pixel.
 
     Args:
-        img (NDArray[np.uint8]): Input 2D array.
-        patch_size (tuple[int, int], optional): Size of the patches.
+        img (NDArray[np.uint8]): The input 2D image array.
+        patch_size (tuple[int, int], optional): The size of the patches.
             Defaults to (5, 5).
 
     Returns:
-        NDArray[np.float64]: 2D array with the local sum at each pixel.
+        NDArray[np.float64]: A 2D array containing the local sum at each pixel.
     """
     global_integral_image = img.astype(np.float64)
     global_integral_image = np.pad(
@@ -370,15 +378,13 @@ def compute_integral_image(
     radius_h, radius_w = patch_size[0] // 2, patch_size[1] // 2
     img_h, img_w = img.shape
 
-    local_integral_image = np.zeros_like(img, dtype=np.float64)
-    for i in range(radius_h, img_h - radius_h):
-        for j in range(radius_w, img_w - radius_w):
-            local_integral_image[i, j] = (
-                global_integral_image[i + radius_h + 1, j + radius_w + 1]
-                - global_integral_image[i - radius_h, j + radius_w + 1]
-                - global_integral_image[i + radius_h + 1, j - radius_w]
-                + global_integral_image[i - radius_h, j - radius_w]
-            )
+    local_integral_image = compute_local_integral_image(
+        global_integral_image=global_integral_image,
+        img_h=img_h,
+        img_w=img_w,
+        radius_h=radius_h,
+        radius_w=radius_w,
+    )
 
     return local_integral_image
 
@@ -479,11 +485,17 @@ def parse_arguments():
         "-p",
         type=str,
         default="5,5",
-        help="The size of the patch used to find bright spots. Format: 'h,w'"
+        help="The size of the patch used to find bright spots. Format: 'h,w'",
+    )
+    parser.add_argument(
+        "--disable_display",
+        "-d",
+        action="store_true",
+        help="Disable display of output image.",
     )
     args = parser.parse_args()
 
-    args.patch_size = tuple(map(int, args.patch_size.split(',')))
+    args.patch_size = tuple(map(int, args.patch_size.split(",")))
 
     return args
 
@@ -534,8 +546,10 @@ def main():
     img_grayscale = cv2.imread(
         input_image_path.as_posix(), cv2.IMREAD_GRAYSCALE
     )
-    patch_centers = find_patch_centers(img=img_grayscale, patch_size=patch_size)
-    verify_patch_centers(
+    patch_centers = find_patch_centers(
+        img=img_grayscale, patch_size=patch_size
+    )
+    assert verify_patch_centers(
         patch_centers=patch_centers, img=img_grayscale, patch_size=patch_size
     )
     sorted_patch_centers = sort_points_clockwise(patch_centers)
@@ -543,8 +557,11 @@ def main():
     print("Area of the quadrilateral:", area)
 
     img_rgb = draw_red_polygon(img_grayscale, sorted_patch_centers)
-    display_side_by_side(img_grayscale, img_rgb, title=f"Area: {area}")
+
     save_image(img=img_rgb, output_image_path=output_image_path)
+
+    if not args.disable_display:
+        display_side_by_side(img_grayscale, img_rgb, title=f"Area: {area}")
 
 
 if __name__ == "__main__":
