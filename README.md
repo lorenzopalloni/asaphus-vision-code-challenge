@@ -23,12 +23,12 @@ python setup.py build_ext --inplace
 ### Usage
 After installation, you can use the script as follows:
 ```sh
-python solution.py --image_path <path-to-your-image>
+python solution.py --input_image_path <path-to-your-image>
 ```
 
 For example, if you have an image named test_image.jpg in the same directory, run:
 ```sh
-python solution.py --image_path assets/Lenna_top.jpg
+python solution.py --input_image_path assets/Lenna_top.jpg
 ```
 
 ### Running tests
